@@ -1,0 +1,91 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        // Добавлено: резервные репозитории для buildscript (если потребуется)
+        maven { url "https://jitpack.io" }
+        maven { url "https://oss.sonatype.org/content/repositories/releases/" }
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.4.0"
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
+        def nav_version = "2.9.6"
+        classpath "androidx.navigation:navigation-safe-args-gradle-plugin:$nav_version"
+        classpath 'com.google.gms:google-services:4.4.4'
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+// Изменённый блок: безопасно подключаем kotlin-parcelize и добавляем проверку/диагностику deprecated kotlin-android-extensions.
+subprojects {
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin('com.android.application') || project.plugins.hasPlugin('com.android.library')) {
+            // Подключаем kotlin-parcelize только если в модуле есть Kotlin-плагин, чтобы не вызывать ошибки.
+            if (!project.plugins.hasPlugin('kotlin-parcelize')) {
+                if (project.plugins.hasPlugin('kotlin-android') || project.plugins.hasPlugin('org.jetbrains.kotlin.android') || project.plugins.hasPlugin('kotlin')) {
+                    project.apply plugin: 'kotlin-parcelize'
+                }
+            }
+            // Если найден устаревший kotlin-android-extensions — прерываем конфигурацию с понятным сообщением.
+            if (project.plugins.hasPlugin('kotlin-android-extensions')) {
+                throw new GradleException("Плагин 'kotlin-android-extensions' больше не поддерживается.\n" +
+                    "Удалите \"apply plugin: 'kotlin-android-extensions'\" из ${project.path}.\n" +
+                    "Шаги миграции:\n" +
+                    " 1) В модуле (app/build.gradle) включите View Binding:\n" +
+                    "      android { buildFeatures { viewBinding true } }\n" +
+                    " 2) Замените synthetic view на ViewBinding-классы.\n" +
+                    " 3) Для @Parcelize используйте kotlin-parcelize (он уже включается автоматически).\n" +
+                    "См. https://goo.gle/kotlin-android-extensions-deprecation и https://developer.android.com/topic/libraries/view-binding")
+            }
+            // Подсказка по миграции (необязательная, информативная)
+            // 1) В каждом Android-модуле (app/build.gradle) включите View Binding:
+            //    android {
+            //        buildFeatures {
+            //            viewBinding true
+            //        }
+            //    }
+            // 2) Замените прямые вызовы synthetic view на ViewBinding-объекты.
+            // 3) Для @Parcelize больше не нужен kotlin-android-extensions — используется kotlin-parcelize (мы включаем его автоматически).
+        }
+    }
+}
+
+// Добавлена диагностическая задача, чтобы быстро найти все вхождения deprecated-плагина в проектных файлах.
+task checkKotlinAndroidExtensions {
+    group = "verification"
+    description = "Find usages of deprecated 'kotlin-android-extensions' and print migration hints."
+    doLast {
+        def found = []
+        rootProject.allprojects.each { p ->
+            p.file('.').eachFileRecurse { f ->
+                try {
+                    if (f.isFile() && (f.name.endsWith('.gradle') || f.name.endsWith('.gradle.kts'))) {
+                        def text = f.getText('UTF-8')
+                        if (text.contains('kotlin-android-extensions')) {
+                            found << f
+                        }
+                    }
+                } catch (Exception ignored) { }
+            }
+        }
+        if (found) {
+            println "\nDeprecated 'kotlin-android-extensions' usages found in:"
+            found.each { println " - ${it}" }
+            println "\nMigration quick steps:"
+            println " 1) Remove apply plugin: 'kotlin-android-extensions' from the listed files."
+            println " 2) In Android modules enable View Binding: android { buildFeatures { viewBinding true } }"
+            println " 3) Replace synthetic views with ViewBinding (IDE refactor / manual)."
+            println " 4) Use @Parcelize with kotlin-parcelize plugin (already applied when Kotlin present)."
+            println "\nSee: https://goo.gle/kotlin-android-extensions-deprecation\n"
+            throw new GradleException("Deprecated 'kotlin-android-extensions' usage detected — see output above.")
+        } else {
+            println "No occurrences of 'kotlin-android-extensions' found."
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
